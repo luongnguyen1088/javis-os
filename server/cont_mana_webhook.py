@@ -56,7 +56,8 @@ async def send_zalo_notification(
     text: str, target_chat_id: str | None = None, chat_type: str | None = None
 ) -> tuple[bool, str]:
     target_chat_id = target_chat_id or os.environ.get("CONT_MANA_ZALO_THREAD_ID", _DEFAULT_THREAD_ID)
-    chat_type = chat_type or ("group" if len(target_chat_id) > 18 else "private")
+    if not chat_type:
+        chat_type = "group" if os.environ.get("CONT_MANA_ZALO_CHAT_TYPE") == "group" else "private"
     try:
         connections = zalo_personal_channel._ket_noi()
         if not connections:

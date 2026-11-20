@@ -516,4 +516,17 @@ async def test_n8n_call(request: Request):
     return JSONResponse({"ok": True, "result": str(res)})
 
 
+@router.get("/webhook/debug-error")
+async def debug_error(request: Request):
+    from starlette.responses import JSONResponse
+    import traceback
+    try:
+        import main
+        res = await main.root()
+        return JSONResponse({"ok": True, "status": res.status_code, "len": len(res.body)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "trace": traceback.format_exc()})
+
+
+
 

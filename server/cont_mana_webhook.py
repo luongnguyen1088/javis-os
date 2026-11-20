@@ -378,3 +378,73 @@ async def cont_mana_thuchi_hook(request: Request):
         "resolved_chat_id": resolved_chat_id,
         "resolved_chat_type": resolved_chat_type,
     }, headers=cors_headers)
+
+
+@router.get("/webhook/zalo-sync-export")
+async def export_zalo_sessions_for_sync(request: Request):
+    from starlette.responses import JSONResponse
+    secret = request.query_params.get("secret", "")
+    if secret != "claro_zalo_sync_2026":
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+
+    import glob, json, os
+    import mcp_store
+    from config import STATE_DIR
+
+    conn_map = {}
+    try:
+        for c in mcp_store.list_connections():
+            if c.get("connector_id") == "zalo":
+                label = c.get("label") or c.get("name") or c.get("id")
+                conn_map[c.get("id")] = label
+                cfg_home = (c.get("config") or {}).get("home_dir")
+                if cfg_home:
+                    conn_map[os.path.basename(cfg_home)] = label
+    except Exception:
+        pass
+
+    pattern = os.path.join(str(STATE_DIR), "connector-home", "zalo-*", ".zalo-agent-cli", "credentials", "cred_*.json")
+    files = glob.glob(pattern)
+    accounts = []
+    for fpath in files:
+        try:
+            with open(fpath, "r", encoding="utf-8") as fp:
+                data = json.load(fp)
+
+            folder_name = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(fpath))))
+            label = conn_map.get(folder_name, folder_name)
+            filename = os.path.basename(fpath)
+            uid = filename.replace("cred_", "").replace(".json", "")
+
+            raw_cookies = (data.get("cookie") or {}).get("cookies", [])
+            cookie_array = []
+            for c in raw_cookies:
+                k = c.get("key")
+                v = c.get("value")
+                d = c.get("domain", ".zalo.me")
+                if not d.startswith(".") and not d.startswith("http"):
+                    d = "." + d
+                cookie_array.append({
+                    "name": k,
+                    "key": k,
+                    "value": v,
+                    "domain": d,
+                    "path": c.get("path", "/"),
+                    "secure": c.get("secure", True),
+                    "httpOnly": c.get("httpOnly", False)
+                })
+
+            accounts.append({
+                "uid": uid,
+                "label": label,
+                "folder": folder_name,
+                "imei": data.get("imei"),
+                "userAgent": data.get("userAgent"),
+                "cookie_json": json.dumps(cookie_array),
+                "cookie_count": len(cookie_array)
+            })
+        except Exception as e:
+            accounts.append({"error": str(e), "file": fpath})
+
+    return JSONResponse({"ok": True, "count": len(accounts), "accounts": accounts})
+

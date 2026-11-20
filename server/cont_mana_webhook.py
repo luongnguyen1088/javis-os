@@ -504,3 +504,16 @@ async def get_n8n_connection_status(request: Request):
     return JSONResponse({"ok": True, "connections": conns})
 
 
+@router.get("/webhook/test-n8n-call")
+async def test_n8n_call(request: Request):
+    from starlette.responses import JSONResponse
+    secret = request.query_params.get("secret", "")
+    if secret != "claro_zalo_sync_2026":
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+
+    import mcp_hub
+    res = await mcp_hub.call_tool("n8n_claro__n8n_list_workflows", {"limit": 3}, mode="full")
+    return JSONResponse({"ok": True, "result": str(res)})
+
+
+

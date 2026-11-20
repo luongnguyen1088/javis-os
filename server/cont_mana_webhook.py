@@ -2,6 +2,7 @@
 
 import math
 import os
+import unicodedata
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -12,6 +13,7 @@ router = APIRouter()
 
 _SEPARATOR = "──────────────────"
 _DEFAULT_THREAD_ID = "1575127037194205234"
+_RESOLVED_GROUP_IDS: dict[str, str] = {}
 _METHODS = {"TIEN_MAT": "💵 Tiền mặt", "CHUYEN_KHOAN": "💳 Chuyển khoản"}
 _FIELDS = (
     ("categoryName", "Danh mục"),
@@ -52,22 +54,68 @@ def format_transaction_message(data: dict) -> str:
     return "\n".join(lines)
 
 
+def _normalize_group_name(name: str) -> str:
+    decomposed = unicodedata.normalize("NFD", name.casefold()).replace("đ", "d")
+    return "".join(
+        char for char in decomposed if not char.isspace() and not unicodedata.combining(char)
+    )
+
+
+async def resolve_target_chat(
+    conn: dict, target_chat_id: str | None, group_name: str | None, chat_type: str | None
+) -> tuple[str, str]:
+    target_chat_id = target_chat_id or os.environ.get("CONT_MANA_ZALO_THREAD_ID")
+    if target_chat_id:
+        default_type = "group" if os.environ.get("CONT_MANA_ZALO_CHAT_TYPE") == "group" else "private"
+        return target_chat_id, chat_type or default_type
+
+    name = (group_name or "").strip() or os.environ.get("CONT_MANA_ZALO_GROUP_NAME", "").strip()
+    name_key = _normalize_group_name(name or "Note Công Việc")
+    if name_key in _RESOLVED_GROUP_IDS:
+        return _RESOLVED_GROUP_IDS[name_key], "group"
+
+    result = await zalo_personal_channel._goi(conn, "zalo_list_threads", {"limit": 200})
+    threads = result.get("threads") if isinstance(result, dict) else result
+    found_tid = None
+    for thread in threads or []:
+        if not isinstance(thread, dict) or (thread.get("threadType") or thread.get("type")) != "group":
+            continue
+        thread_id = thread.get("threadId") or thread.get("id")
+        if not thread_id:
+            continue
+        thread_name = _normalize_group_name(str(thread.get("name") or ""))
+        if thread_name == name_key:
+            found_tid = str(thread_id)
+            break
+        if found_tid is None and name_key in thread_name:
+            found_tid = str(thread_id)
+    if found_tid is not None:
+        _RESOLVED_GROUP_IDS[name_key] = found_tid
+        return found_tid, "group"
+    return _DEFAULT_THREAD_ID, "private"
+
+
 async def send_zalo_notification(
-    text: str, target_chat_id: str | None = None, chat_type: str | None = None
-) -> tuple[bool, str]:
-    target_chat_id = target_chat_id or os.environ.get("CONT_MANA_ZALO_THREAD_ID", _DEFAULT_THREAD_ID)
-    if not chat_type:
-        chat_type = "group" if os.environ.get("CONT_MANA_ZALO_CHAT_TYPE") == "group" else "private"
+    text: str,
+    target_chat_id: str | None = None,
+    chat_type: str | None = None,
+    group_name: str | None = None,
+) -> tuple[bool, str, str | None, str | None]:
+    resolved_chat_id = resolved_chat_type = None
     try:
         connections = zalo_personal_channel._ket_noi()
         if not connections:
-            return False, "No active Zalo connection"
+            return False, "No active Zalo connection", None, None
+        conn = connections[0]
+        resolved_chat_id, resolved_chat_type = await resolve_target_chat(
+            conn, target_chat_id, group_name, chat_type
+        )
         ok, detail = await zalo_personal.gui(
-            connections[0], target_chat_id, text, chat_type=chat_type
+            conn, resolved_chat_id, text, chat_type=resolved_chat_type
         )
     except Exception as exc:
-        return False, str(exc) or type(exc).__name__
-    return (True, "sent") if ok else (False, detail or "Zalo send failed")
+        return False, str(exc) or type(exc).__name__, resolved_chat_id, resolved_chat_type
+    return ok, "sent" if ok else detail or "Zalo send failed", resolved_chat_id, resolved_chat_type
 
 
 @router.post("/webhook/cont-mana-thuchi")
@@ -80,12 +128,22 @@ async def cont_mana_thuchi_hook(request: Request):
         text = format_transaction_message(data)
         chat_id = data.get("chatId")
         chat_type = data.get("chatType")
+        group_name = data.get("groupName")
         if chat_id is not None and not isinstance(chat_id, str):
             raise ValueError("chatId must be a string")
         if chat_type not in (None, "", "private", "group"):
             raise ValueError("chatType must be private or group")
+        if group_name is not None and not isinstance(group_name, str):
+            raise ValueError("groupName must be a string")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    ok, detail = await send_zalo_notification(text, target_chat_id=chat_id, chat_type=chat_type)
-    return {"ok": ok, "detail": detail}
+    ok, detail, resolved_chat_id, resolved_chat_type = await send_zalo_notification(
+        text, target_chat_id=chat_id, chat_type=chat_type, group_name=group_name
+    )
+    return {
+        "ok": ok,
+        "detail": detail,
+        "resolved_chat_id": resolved_chat_id,
+        "resolved_chat_type": resolved_chat_type,
+    }

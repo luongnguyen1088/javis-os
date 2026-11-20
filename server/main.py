@@ -12822,6 +12822,7 @@ tasks_feature.deps.learn_hook = learn_feature.enqueue_job
 # ============================================================
 import reminders as reminders_mod
 import webhook_lazy  # the webhook routes; the platform itself loads at startup (keeps `import main` light)
+import cont_mana_webhook
 import incident_desk as incident_desk_mod
 import sentinel
 import change_receipt
@@ -13012,6 +13013,7 @@ async def _webhook_send(chat_id, text, viec=None, web="", brain="", dedup=""):
                                viec=viec, web=web, brain=brain, dedup=dedup)
 
 
+app.include_router(cont_mana_webhook.router)
 webhook_feature = webhook_lazy.register(app, dict(
     state_dir=lambda: cfgmod.STATE_DIR,
     run_task=lambda brain, text, level: reminders_feature._run_task(

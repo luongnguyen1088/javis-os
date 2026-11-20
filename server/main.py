@@ -344,6 +344,8 @@ async def _csrf_guard(request: Request, call_next):
     # lõi GỠ cookie khỏi request trước khi giao cho plugin ở những đường này - không có gì để
     # mượn. Chặn nhầm thì máy chủ bên ngoài (OpenAI đổi token, webhook) không gọi vào được.
     _dr = duong_dan_router(request)
+    if (_dr.startswith("/webhook/") or _dr.startswith("/hooks/") or _dr.startswith("/api/cont-mana/")):
+        return await call_next(request)
     if ((_dr.startswith("/ext/") or _dr.startswith("/.well-known/"))
             and plugins_host.http_khong_cookie(_dr, request.method)):
         return await call_next(request)

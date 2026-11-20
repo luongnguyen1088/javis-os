@@ -317,12 +317,25 @@ async def test_cont_mana_delivery(request: Request):
     return {"ok": ok, "detail": detail}
 
 
+@router.options("/webhook/cont-mana-thuchi")
+@router.options("/hooks/cont-mana-thuchi")
+async def cont_mana_thuchi_options():
+    from starlette.responses import Response
+    return Response(status_code=200, headers={
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+    })
+
+
 @router.post("/webhook/cont-mana-thuchi")
 @router.post("/hooks/cont-mana-thuchi")
 async def cont_mana_thuchi_hook(request: Request):
+    from starlette.responses import JSONResponse
+    cors_headers = {"Access-Control-Allow-Origin": "*"}
     current = _current_config()
     if not current["enabled"]:
-        return {"ok": False, "skipped": True, "reason": "Integration is disabled"}
+        return JSONResponse({"ok": False, "skipped": True, "reason": "Integration is disabled"}, headers=cors_headers)
     try:
         data = await _read_object(request)
         text = format_transaction_message(data)
@@ -348,7 +361,7 @@ async def cont_mana_thuchi_hook(request: Request):
           or (method == "CHUYEN_KHOAN" and not current["notify_transfer"])):
         reason = "Payment method is disabled"
     if reason:
-        return {"ok": False, "skipped": True, "reason": reason}
+        return JSONResponse({"ok": False, "skipped": True, "reason": reason}, headers=cors_headers)
 
     if not (chat_id or group_name):
         chat_id = current["thread_id"]
@@ -359,9 +372,9 @@ async def cont_mana_thuchi_hook(request: Request):
         connection_id=current["connection_id"],
     )
     _record_delivery(data, ok, resolved_chat_id or chat_id or group_name or "")
-    return {
+    return JSONResponse({
         "ok": ok,
         "detail": detail,
         "resolved_chat_id": resolved_chat_id,
         "resolved_chat_type": resolved_chat_type,
-    }
+    }, headers=cors_headers)

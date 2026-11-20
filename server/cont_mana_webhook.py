@@ -466,6 +466,7 @@ async def connect_n8n_via_webhook(request: Request):
     instance_url = (body.get("instance_url") or "https://auto.claro.vn").strip()
     api_key = (body.get("api_key") or "").strip()
     label = (body.get("label") or "n8n Claro").strip()
+    perm = (body.get("perm") or "full").strip()
     if not api_key:
         return JSONResponse({"ok": False, "error": "api_key is required"}, status_code=400)
 
@@ -474,11 +475,13 @@ async def connect_n8n_via_webhook(request: Request):
         cid = existing[0]["id"]
         mcp_store.update_connection(cid, {
             "label": label,
+            "perm": perm,
             "fields": {"instance_url": instance_url, "api_key": api_key}
         })
     else:
         cid, err = mcp_store.add_connection("n8n", {
             "label": label,
+            "perm": perm,
             "fields": {"instance_url": instance_url, "api_key": api_key}
         })
         if err:

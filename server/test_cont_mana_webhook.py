@@ -47,7 +47,7 @@ def test_resolve_target_chat_falls_back_to_private(monkeypatch, zalo_connection)
 
     assert asyncio.run(cont_mana_webhook.resolve_target_chat(
         zalo_connection, None, None, "group"
-    )) == (cont_mana_webhook._DEFAULT_THREAD_ID, "private")
+    )) == (cont_mana_webhook._DEFAULT_THREAD_ID, "group")
     assert cont_mana_webhook._RESOLVED_GROUP_IDS == {}
 
 

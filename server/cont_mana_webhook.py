@@ -12,7 +12,8 @@ from channels import zalo_personal
 router = APIRouter()
 
 _SEPARATOR = "──────────────────"
-_DEFAULT_THREAD_ID = "1575127037194205234"
+_DEFAULT_THREAD_ID = "5898093850445528371"  # Nhóm "Note Công Việc"
+_DEFAULT_CHAT_TYPE = "group"
 _RESOLVED_GROUP_IDS: dict[str, str] = {}
 _METHODS = {"TIEN_MAT": "💵 Tiền mặt", "CHUYEN_KHOAN": "💳 Chuyển khoản"}
 _FIELDS = (
@@ -94,7 +95,7 @@ async def resolve_target_chat(
     if found_tid is not None:
         _RESOLVED_GROUP_IDS[name_key] = found_tid
         return found_tid, "group"
-    return _DEFAULT_THREAD_ID, f"not_found (available: {all_groups_debug[:15]})"
+    return _DEFAULT_THREAD_ID, "group"
 
 
 async def send_zalo_notification(

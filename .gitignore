@@ -212,3 +212,16 @@ server/client_errors.tmp
 # Desktop installers built by packaging/ (CI publishes them on the "desktop" release)
 /dist/
 packaging/windows/Vietnamese.isl
+
+# Local runtime states & databases
+.1devtool/
+server/cache/
+server/agent_notify.json
+server/codex_instr_threads.json
+server/connect_smoke.json
+server/github_work.db*
+server/javis_core.json
+server/news_read.json
+server/plan_limits.json
+server/webhook_events.sqlite3*
+

@@ -271,6 +271,7 @@ _AUTH_PUBLIC_PREFIX = ("/static", "/health", "/s/", "/hooks/", "/webhook/")
 # /brand-logo: hiện trên màn đăng nhập (trước session). /tls-check: Caddy gọi (không đăng nhập được).
 _AUTH_PUBLIC_EXACT = ("/", "/favicon.ico", "/auth/status", "/auth/login", "/auth/setup",
                       "/brand-logo", "/brand-theme.css", "/tls-check",
+                      "/cont-mana", "/settings/cont-mana",
                       # /domain/auto, /domain/whoami (0.302.0): the login page opened by IP asks whether a
                       # verified https link exists; neither reveals anything beyond that link and a random id.
                       "/domain/auto", "/domain/whoami",

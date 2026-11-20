@@ -1,0 +1,339 @@
+﻿<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cont Mana Integration · JAVIS OS</title>
+  <link rel="icon" href="/brand-logo">
+  <script>
+    try {
+      const theme = localStorage.getItem('javis.theme');
+      const hours = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(localStorage.getItem('javis.theme.schedule') || '')
+        || ['', 6, 0, 18, 0];
+      const start = +hours[1] * 60 + +hours[2], end = +hours[3] * 60 + +hours[4];
+      const now = new Date(), minute = now.getHours() * 60 + now.getMinutes();
+      const scheduledLight = start < end ? minute >= start && minute < end : start !== end && (minute >= start || minute < end);
+      document.documentElement.dataset.theme = theme === 'light' || (!['dark', 'dim'].includes(theme) && scheduledLight) ? 'light' : 'dark';
+    } catch {}
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101319; --surface: #181d26; --input: #11161e; --line: #343f50;
+      --text: #edf2f9; --muted: #a8b5c7; --accent: #9dbaff; --primary: #285bd7;
+      --good: #8ae1ba; --good-bg: #173c33; --bad: #ffb2ba; --bad-bg: #49262f;
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f3f6fa; --surface: #fff; --input: #f8fafd; --line: #d8e0ec;
+      --text: #182438; --muted: #4f6076; --accent: #234eb5; --primary: #2854c5;
+      --good: #135d42; --good-bg: #dff5e9; --bad: #992942; --bad-bg: #fde7ec;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, sans-serif; }
+    header { background: var(--surface); border-bottom: 1px solid var(--line); }
+    .bar, main { width: min(1080px, calc(100% - 32px)); margin-inline: auto; }
+    .bar { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-block: 10px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+    .brand img { width: 34px; height: 34px; border-radius: 8px; }
+    .brand small { display: block; color: var(--muted); font-size: 12px; font-weight: 550; }
+    main { padding-block: 32px 48px; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(25px, 4vw, 34px); letter-spacing: -.035em; margin-bottom: 18px; }
+    h2 { font-size: 18px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 20px; overflow: hidden; }
+    .section, .history-title { padding: 20px 24px; }
+    .section + .section { border-top: 1px solid var(--line); }
+    .row, .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .row { justify-content: space-between; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    label { font-weight: 600; }
+    .field { min-width: 0; display: grid; align-content: start; gap: 7px; }
+    .group-select { display: flex; flex-wrap: wrap; gap: 8px; }
+    .group-select select { flex: 1 1 155px; }
+    select, input[type="number"], button, .back {
+      min-height: 42px; border-radius: 8px; border: 1px solid var(--line); padding: 8px 12px;
+      background: var(--input); color: var(--text); font: inherit;
+    }
+    select, input[type="number"] { width: 100%; min-width: 0; }
+    button, .back { cursor: pointer; font-weight: 650; text-decoration: none; }
+    button:hover:not(:disabled), .back:hover { border-color: var(--accent); }
+    button:disabled { cursor: wait; opacity: .65; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .primary { background: var(--primary); color: white; border-color: var(--primary); }
+    .switch, .checks label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+    .switch input { appearance: none; width: 44px; height: 25px; margin: 0; border: 1px solid var(--line); border-radius: 20px; background: var(--input); cursor: pointer; }
+    .switch input::before { content: ""; display: block; width: 17px; height: 17px; margin: 3px; border-radius: 50%; background: var(--muted); }
+    .switch input:checked { background: var(--primary); }
+    .switch input:checked::before { transform: translateX(19px); background: white; }
+    .checks { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+    .checks input { accent-color: var(--primary); margin: 0; width: 16px; height: 16px; }
+    .actions { justify-content: flex-end; }
+    .hint, .empty { color: var(--muted); }
+    .hint { font-size: 13px; }
+    .notice { margin-bottom: 14px; }
+    .notice:empty { display: none; }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { padding: 12px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+    th:first-child, td:first-child { padding-left: 24px; }
+    th { font-size: 13px; color: var(--muted); background: var(--input); white-space: nowrap; }
+    td { overflow-wrap: anywhere; }
+    td:first-child, .money { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .badge { display: inline-block; white-space: nowrap; color: var(--muted); background: var(--input); border-radius: 20px; padding: 3px 9px; font-size: 12px; font-weight: 700; }
+    .good { color: var(--good); background: var(--good-bg); }
+    .bad { color: var(--bad); background: var(--bad-bg); }
+    .empty { text-align: center; padding: 24px; }
+    #toast { position: fixed; bottom: 18px; right: 18px; max-width: calc(100vw - 36px); padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; overflow-wrap: anywhere; }
+    #toast:empty { display: none; }
+    @media (max-width: 650px) {
+      main { padding-top: 20px; }
+      .grid { grid-template-columns: 1fr; }
+      .section, .history-title { padding: 16px; }
+      .back { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <div class="brand"><img src="/brand-logo" alt=""><div>JAVIS OS<small>Cont Mana Integration</small></div></div>
+      <a class="back" href="/">← Trang chủ</a>
+    </div>
+  </header>
+  <main>
+    <h1>Cài đặt tích hợp Cont Mana</h1>
+    <p id="notice" class="notice hint" role="status"></p>
+    <form id="settings" class="card">
+      <fieldset id="controls" disabled style="border:0;margin:0;padding:0;min-inline-size:0">
+        <div class="section row">
+          <h2><label for="enabled">Kích hoạt gửi thông báo Zalo</label></h2>
+          <label class="switch"><input id="enabled" type="checkbox" role="switch"><span id="enabledLabel" aria-hidden="true">Bật</span></label>
+        </div>
+        <div class="section grid">
+          <div class="field">
+            <label for="connection_id">Tài khoản Zalo gửi tin</label>
+            <select id="connection_id"></select>
+          </div>
+          <div class="field">
+            <label for="thread_id">Nhóm Zalo nhận tin</label>
+            <div class="group-select">
+              <select id="thread_id" aria-describedby="groupsHint"></select>
+              <button type="button" id="refresh">🔄 Tải lại nhóm</button>
+            </div>
+            <p class="hint" id="groupsHint" role="status"></p>
+          </div>
+          <div class="field" role="group" aria-labelledby="filterLabel">
+            <strong id="filterLabel">Bộ lọc giao dịch</strong>
+            <div class="checks">
+              <label><input id="notify_income" type="checkbox"> Báo Thu</label>
+              <label><input id="notify_expense" type="checkbox"> Báo Chi</label>
+              <label><input id="notify_cash" type="checkbox"> Tiền mặt</label>
+              <label><input id="notify_transfer" type="checkbox"> Chuyển khoản</label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="min_amount">Số tiền tối thiểu (VNĐ)</label>
+            <input type="number" id="min_amount" min="0" step="1" required>
+          </div>
+        </div>
+        <div class="section actions">
+          <button type="button" id="test">🚀 Gửi tin nhắn thử nghiệm</button>
+          <button type="submit" class="primary" id="save">💾 Lưu cấu hình</button>
+        </div>
+      </fieldset>
+    </form>
+    <section class="card" aria-labelledby="historyTitle">
+      <h2 class="history-title" id="historyTitle">20 Giao dịch gần nhất</h2>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="historyTitle">
+        <table>
+          <thead><tr><th>Thời gian</th><th>Loại</th><th>Số tiền</th><th>Phương thức</th><th>Nội dung</th><th>Trạng thái Zalo</th></tr></thead>
+          <tbody id="logs"><tr><td class="empty" colspan="6">Đang tải giao dịch…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <div id="toast" role="status"></div>
+  <script>
+    const byId = id => document.getElementById(id);
+    const endpoint = '/api/cont-mana';
+    const flags = ['enabled', 'notify_income', 'notify_expense', 'notify_cash', 'notify_transfer'];
+    const account = byId('connection_id'), group = byId('thread_id');
+    const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
+    const date = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+    let toastTimer, groupRequest = 0, logsRequest = 0;
+    let chatType = 'group';
+
+    async function api(path, body) {
+      const options = body === undefined ? {} : {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      };
+      const response = await fetch(endpoint + path, { ...options, cache: 'no-store' });
+      if (response.status === 401) throw new Error('Vui lòng đăng nhập từ trang chủ JAVIS OS.');
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.detail || 'Không thể hoàn tất yêu cầu.');
+      return data;
+    }
+
+    function toast(message, success) {
+      const element = byId('toast');
+      element.className = success ? 'good' : 'bad';
+      element.textContent = message;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { element.textContent = ''; }, 5000);
+    }
+
+    function cell(row, value, badgeClass) {
+      const td = row.insertCell();
+      if (badgeClass !== undefined) {
+        const badge = document.createElement('span');
+        badge.className = 'badge ' + badgeClass;
+        badge.textContent = value;
+        td.append(badge);
+      } else {
+        td.textContent = value;
+      }
+      return td;
+    }
+
+    function renderLogs(entries) {
+      const logs = byId('logs');
+      logs.replaceChildren();
+      if (!entries.length) {
+        const empty = cell(logs.insertRow(), 'Chưa có giao dịch gửi qua Zalo.');
+        empty.className = 'empty';
+        empty.colSpan = 6;
+      }
+      for (const entry of entries.slice(0, 20)) {
+        const row = logs.insertRow(), time = new Date(entry.time);
+        cell(row, Number.isNaN(time.getTime()) ? '—' : date.format(time));
+        const income = entry.type === 'INCOME';
+        cell(row, income ? '🟢 THU' : '🔴 CHI', income ? 'good' : 'bad');
+        cell(row, currency.format(entry.amount)).className = 'money';
+        const method = { TIEN_MAT: 'Tiền mặt', CHUYEN_KHOAN: 'Chuyển khoản' };
+        cell(row, Object.hasOwn(method, entry.method) ? method[entry.method] : entry.method || '—', '');
+        cell(row, entry.description || '—');
+        const sent = entry.status === 'sent';
+        cell(row, sent ? 'Đã gửi' : 'Gửi lỗi', sent ? 'good' : 'bad').title = entry.target || '';
+      }
+    }
+
+    function renderGroups(groups, selected, error) {
+      group.replaceChildren(new Option('Chọn nhóm Zalo', ''));
+      for (const item of groups) group.add(new Option(item.name, item.id));
+      if (selected.id && !groups.some(item => item.id === selected.id)) {
+        group.add(new Option(selected.name || selected.id, selected.id));
+      }
+      group.value = selected.id || (groups.find(item => item.name === selected.name)?.id ?? '');
+      byId('groupsHint').textContent = error || (!groups.length ? 'Chưa có nhóm Zalo khả dụng.' : '');
+    }
+
+    async function refreshGroups(keepSelection) {
+      const request = ++groupRequest;
+      const selected = keepSelection ? { id: group.value, name: group.selectedOptions[0]?.text } : {};
+      const button = byId('refresh');
+      button.disabled = true;
+      byId('groupsHint').textContent = 'Đang tải nhóm…';
+      try {
+        const data = await api('/config?connection_id=' + encodeURIComponent(account.value));
+        if (request === groupRequest) renderGroups(data.groups, selected, data.groups_error);
+      } catch (error) {
+        if (request === groupRequest) byId('groupsHint').textContent = error.message;
+      } finally {
+        if (request === groupRequest) button.disabled = false;
+      }
+    }
+
+    async function refreshLogs() {
+      const request = ++logsRequest;
+      try {
+        const data = await api('/config?include_groups=false');
+        if (request === logsRequest) {
+          byId('notice').textContent = '';
+          renderLogs(data.config.recent_logs);
+        }
+      } catch (error) {
+        if (request === logsRequest) byId('notice').textContent = error.message;
+      }
+    }
+
+    function target() {
+      if (!group.value) throw new Error('Vui lòng chọn nhóm Zalo nhận tin.');
+      return { connection_id: account.value, thread_id: group.value,
+        group_name: group.selectedOptions[0].text, chat_type: chatType };
+    }
+
+    async function runAction(button, busyLabel, action) {
+      const label = button.textContent;
+      button.textContent = busyLabel;
+      byId('controls').disabled = true;
+      try {
+        await action();
+      } catch (error) {
+        toast(error.message, false);
+      } finally {
+        button.textContent = label;
+        byId('controls').disabled = false;
+      }
+    }
+
+    byId('enabled').addEventListener('change', () => {
+      byId('enabledLabel').textContent = byId('enabled').checked ? 'Bật' : 'Tắt';
+    });
+    account.addEventListener('change', () => {
+      chatType = 'group';
+      renderGroups([], {});
+      refreshGroups(false);
+    });
+    group.addEventListener('change', () => { chatType = 'group'; });
+    byId('refresh').addEventListener('click', () => refreshGroups(true));
+    byId('settings').addEventListener('submit', event => {
+      event.preventDefault();
+      runAction(byId('save'), 'Đang lưu…', async () => {
+        const updates = { ...target(), min_amount: byId('min_amount').valueAsNumber };
+        for (const key of flags) updates[key] = byId(key).checked;
+        const data = await api('/config', updates);
+        ++logsRequest;
+        renderLogs(data.config.recent_logs);
+        toast('Đã lưu cấu hình.', true);
+      });
+    });
+    byId('test').addEventListener('click', () => {
+      runAction(byId('test'), 'Đang gửi…', async () => {
+        const destination = target();
+        try {
+          await api('/test', destination);
+          toast('Đã gửi tin nhắn thử nghiệm qua Zalo.', true);
+        } finally {
+          await refreshLogs();
+        }
+      });
+    });
+
+    async function initialize() {
+      try {
+        const { config, accounts, groups, groups_error } = await api('/config');
+        account.add(new Option('Tự động (tài khoản khả dụng đầu tiên)', ''));
+        for (const item of accounts) account.add(new Option(item.label, item.id));
+        if (config.connection_id && !accounts.some(item => item.id === config.connection_id)) {
+          account.add(new Option('Tài khoản không khả dụng', config.connection_id));
+        }
+        account.value = config.connection_id;
+        chatType = config.chat_type;
+        renderGroups(groups, { id: config.thread_id, name: config.group_name }, groups_error);
+        for (const key of flags) byId(key).checked = config[key];
+        byId('enabledLabel').textContent = config.enabled ? 'Bật' : 'Tắt';
+        byId('min_amount').value = config.min_amount;
+        renderLogs(config.recent_logs);
+        byId('controls').disabled = false;
+        setInterval(refreshLogs, 15000);
+      } catch (error) {
+        byId('notice').textContent = error.message;
+        renderLogs([]);
+      }
+    }
+
+    initialize();
+  </script>
+</body>
+</html>

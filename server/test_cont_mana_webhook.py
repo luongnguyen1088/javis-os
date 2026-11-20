@@ -1,10 +1,25 @@
 import asyncio
+import json
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import cont_mana_webhook
+
+
+@pytest.fixture(autouse=True)
+def isolated_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(cont_mana_webhook.config, "STATE_DIR", tmp_path)
+    return tmp_path
+
+
+@pytest.fixture
+def client():
+    app = FastAPI()
+    app.include_router(cont_mana_webhook.router)
+    return TestClient(app)
 
 
 @pytest.fixture
@@ -144,4 +159,125 @@ def test_cont_mana_hook(monkeypatch, ok, detail):
         target_chat_id="123456789",
         chat_type="group",
         group_name="Custom Group",
+        connection_id="",
     )
+    entry = cont_mana_webhook._current_config()["recent_logs"][0]
+    assert entry["status"] == ("sent" if ok else "failed")
+    assert entry["target"] == "123456789"
+
+
+def test_get_config_lists_groups_for_selected_account(client, monkeypatch):
+    accounts = [{"id": "first", "label": "Personal"}, {"id": "second", "label": "Office", "env": {}}]
+    monkeypatch.setattr(cont_mana_webhook.zalo_personal_channel, "_ket_noi", lambda: accounts)
+    list_threads = AsyncMock(return_value={"threads": [
+        {"threadId": "note", "name": "Note Công Việc", "threadType": "group"},
+        {"threadId": "dm", "name": "Private", "isGroup": "false"},
+    ]})
+    monkeypatch.setattr(cont_mana_webhook.zalo_personal_channel, "_goi", list_threads)
+    response = client.get("/api/cont-mana/config")
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True, "config": cont_mana_webhook._DEFAULT_CONFIG,
+        "accounts": [{"id": "first", "label": "Personal"}, {"id": "second", "label": "Office"}],
+        "groups": [{"id": "note", "name": "Note Công Việc"}],
+    }
+    list_threads.assert_awaited_once_with(accounts[0], "zalo_list_threads", {"limit": 200})
+    client.post("/api/cont-mana/config", json={"connection_id": "second"})
+    client.get("/api/cont-mana/config")
+    list_threads.assert_awaited_with(accounts[1], "zalo_list_threads", {"limit": 200})
+    assert client.get("/api/cont-mana/config?include_groups=false").json()["groups"] == []
+    assert list_threads.await_count == 2
+
+
+def test_post_config_persists_partial_updates(client, isolated_state, monkeypatch):
+    updates = {"connection_id": " office ", "min_amount": 5000, "notify_expense": False}
+    response = client.post("/api/cont-mana/config", json={**updates, "recent_logs": [{}]})
+    assert response.status_code == 200
+    current = {**cont_mana_webhook._DEFAULT_CONFIG, **updates, "connection_id": "office"}
+    assert response.json() == {"ok": True, "config": current}
+    path = isolated_state / "cont_mana_config.json"
+    assert json.loads(path.read_text(encoding="utf-8")) == current
+    monkeypatch.setattr(cont_mana_webhook, "_CONFIG_CACHE", None)
+    assert client.get("/api/cont-mana/config?include_groups=false").json()["config"] == current
+
+
+@pytest.mark.parametrize("settings", [
+    [], {"enabled": "false"}, {"min_amount": -1}, {"min_amount": True},
+    {"min_amount": 0.5}, {"thread_id": 123}, {"chat_type": "invalid"},
+])
+def test_post_config_rejects_invalid_settings(client, settings, isolated_state):
+    response = client.post("/api/cont-mana/config", json=settings)
+    assert response.status_code == 400
+    assert not (isolated_state / "cont_mana_config.json").exists()
+
+
+@pytest.mark.parametrize("settings, transaction, reason", [
+    ({"enabled": False}, {}, "Integration is disabled"),
+    ({"min_amount": 100001}, {}, "Amount below threshold"),
+    ({"notify_income": False}, {"type": " in "}, "Transaction type is disabled"),
+    ({"notify_expense": False}, {"type": "out"}, "Transaction type is disabled"),
+    ({"notify_cash": False}, {"method": " tien_mat "}, "Payment method is disabled"),
+    ({"notify_transfer": False}, {"method": "CHUYEN_KHOAN"}, "Payment method is disabled"),
+])
+def test_webhook_filters_transactions(client, monkeypatch, settings, transaction, reason):
+    send = AsyncMock()
+    monkeypatch.setattr(cont_mana_webhook, "send_zalo_notification", send)
+    client.post("/api/cont-mana/config", json=settings)
+    response = client.post("/hooks/cont-mana-thuchi", json={
+        "type": "INCOME", "amount": 100000, **transaction,
+    })
+    assert response.json() == {"ok": False, "skipped": True, "reason": reason}
+    send.assert_not_awaited()
+    assert client.get("/api/cont-mana/config?include_groups=false").json()["config"]["recent_logs"] == []
+
+
+def test_configured_delivery_and_test_message_keep_latest_logs(client, monkeypatch):
+    accounts = [{"id": "first"}, {"id": "selected"}]
+    monkeypatch.setattr(cont_mana_webhook.zalo_personal_channel, "_ket_noi", lambda: accounts)
+    send = AsyncMock(return_value=(True, ""))
+    monkeypatch.setattr(cont_mana_webhook.zalo_personal, "gui", send)
+    client.post("/api/cont-mana/config", json={
+        "connection_id": "selected", "thread_id": "note", "min_amount": 100000,
+    })
+    for index in range(30):
+        response = client.post("/webhook/cont-mana-thuchi", json={
+            "id": str(index), "type": "OUT", "amount": 100000,
+            "method": "TIEN_MAT", "description": "Delivery",
+        })
+        assert response.json()["ok"]
+    assert send.await_args.args[:2] == (accounts[1], "note")
+
+    client.post("/api/cont-mana/config", json={"enabled": False})
+    assert client.post("/api/cont-mana/test").json() == {"ok": True, "detail": "sent"}
+    assert send.await_args.args[:2] == (accounts[1], "note")
+    response = client.post("/api/cont-mana/test", json={"connection_id": "first", "thread_id": "draft"})
+    assert response.json() == {"ok": True, "detail": "sent"}
+    assert send.await_args.args[:2] == (accounts[0], "draft")
+    current = client.get("/api/cont-mana/config?include_groups=false").json()["config"]
+    assert current["connection_id"] == "selected"
+    logs = current["recent_logs"]
+    assert len(logs) == 30
+    assert logs[0]["description"] == "Test từ giao diện"
+    assert logs[0]["target"] == "draft"
+    assert logs[2] == {
+        "time": logs[2]["time"], "id": "29", "type": "EXPENSE", "amount": 100000,
+        "description": "Delivery", "method": "TIEN_MAT", "status": "sent", "target": "note",
+    }
+    assert logs[-1]["id"] == "2"
+
+
+def test_public_pages_and_protected_apis(monkeypatch):
+    from main import app
+
+    monkeypatch.setattr(cont_mana_webhook.config, "gate_active", lambda: True)
+    monkeypatch.setattr(cont_mana_webhook.config, "valid_session", lambda session: session == "valid")
+    client = TestClient(app, base_url="http://localhost")
+    for path in ("/cont-mana", "/settings/cont-mana"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "Cont Mana Integration" in response.text
+    assert client.get("/api/cont-mana/config").status_code == 401
+    assert client.post("/api/cont-mana/config", json={}).status_code == 401
+    assert client.post("/api/cont-mana/test").status_code == 401
+    client.cookies.set("javis_session", "valid")
+    assert client.get("/api/cont-mana/config?include_groups=false").status_code == 200

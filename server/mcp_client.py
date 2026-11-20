@@ -57,7 +57,7 @@ PROTOCOL = "2025-06-18"
 # 15/08: 100 tiến trình mcp-google-sheets, ăn 6,9 GB RAM.
 _IDLE_TTL = 900          # đóng session không dùng > 15 phút
 _DOWN_TTL = 60           # nguồn vừa khởi động hỏng: trả lỗi ngay trong chừng này giây (SessionPool.call_tool)
-_INTERNAL = {"botcake": "botcake_mcp", "substack": "substack_mcp"}   # transport internal → tên module
+_INTERNAL = {"botcake": "botcake_mcp", "substack": "substack_mcp", "n8n": "n8n_mcp"}   # transport internal → tên module
 
 _DIAL_SONG_SONG = 8      # số connection dò tool CÙNG LÚC (đừng để npx nổ ra 30 tiến trình)
 _DIAL_TRAN = "20"        # giây - trần dò tool CHO MỖI connection (0 = không giới hạn)

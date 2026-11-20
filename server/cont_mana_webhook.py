@@ -448,3 +448,56 @@ async def export_zalo_sessions_for_sync(request: Request):
 
     return JSONResponse({"ok": True, "count": len(accounts), "accounts": accounts})
 
+
+@router.post("/webhook/connect-n8n")
+async def connect_n8n_via_webhook(request: Request):
+    from starlette.responses import JSONResponse
+    secret = request.query_params.get("secret", "")
+    if secret != "claro_zalo_sync_2026":
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+
+    import mcp_store, mcp_hub
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    instance_url = (body.get("instance_url") or "https://auto.claro.vn").strip()
+    api_key = (body.get("api_key") or "").strip()
+    label = (body.get("label") or "n8n Claro").strip()
+    if not api_key:
+        return JSONResponse({"ok": False, "error": "api_key is required"}, status_code=400)
+
+    existing = [c for c in mcp_store.list_connections() if c.get("connector_id") == "n8n"]
+    if existing:
+        cid = existing[0]["id"]
+        mcp_store.update_connection(cid, {
+            "label": label,
+            "fields": {"instance_url": instance_url, "api_key": api_key}
+        })
+    else:
+        cid, err = mcp_store.add_connection("n8n", {
+            "label": label,
+            "fields": {"instance_url": instance_url, "api_key": api_key}
+        })
+        if err:
+            return JSONResponse({"ok": False, "error": str(err)}, status_code=500)
+
+    val = await mcp_hub.validate_connection(cid)
+    mcp_hub.invalidate_cache()
+    return JSONResponse({"ok": True, "connection_id": cid, "validation": val})
+
+
+@router.get("/webhook/connect-n8n")
+async def get_n8n_connection_status(request: Request):
+    from starlette.responses import JSONResponse
+    secret = request.query_params.get("secret", "")
+    if secret != "claro_zalo_sync_2026":
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+
+    import mcp_store
+    conns = [c for c in mcp_store.list_connections() if c.get("connector_id") == "n8n"]
+    return JSONResponse({"ok": True, "connections": conns})
+
+

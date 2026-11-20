@@ -267,7 +267,7 @@ app.add_middleware(CORSMiddleware,
 # canh đúng một ký tự này.
 # "/hooks/" (0.198.0): webhook triggers, called by outside systems with no cookie. Same trailing
 # slash rule as "/s/"; each hook checks its own secret token in webhook_triggers.accept().
-_AUTH_PUBLIC_PREFIX = ("/static", "/health", "/s/", "/hooks/")
+_AUTH_PUBLIC_PREFIX = ("/static", "/health", "/s/", "/hooks/", "/webhook/")
 # /brand-logo: hiện trên màn đăng nhập (trước session). /tls-check: Caddy gọi (không đăng nhập được).
 _AUTH_PUBLIC_EXACT = ("/", "/favicon.ico", "/auth/status", "/auth/login", "/auth/setup",
                       "/brand-logo", "/brand-theme.css", "/tls-check",
@@ -13014,6 +13014,11 @@ async def _webhook_send(chat_id, text, viec=None, web="", brain="", dedup=""):
 
 
 app.include_router(cont_mana_webhook.router)
+# Chuyển route cont-mana lên trước để không bị wildcard /hooks/{hook_id} bắt nhầm
+for r in reversed(cont_mana_webhook.router.routes):
+    if r in app.router.routes:
+        app.router.routes.remove(r)
+        app.router.routes.insert(0, r)
 webhook_feature = webhook_lazy.register(app, dict(
     state_dir=lambda: cfgmod.STATE_DIR,
     run_task=lambda brain, text, level: reminders_feature._run_task(

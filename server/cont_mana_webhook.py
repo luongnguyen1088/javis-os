@@ -69,6 +69,7 @@ async def send_zalo_notification(
     return (True, "sent") if ok else (False, detail or "Zalo send failed")
 
 
+@router.post("/webhook/cont-mana-thuchi")
 @router.post("/hooks/cont-mana-thuchi")
 async def cont_mana_thuchi_hook(request: Request):
     try:

@@ -75,24 +75,26 @@ async def resolve_target_chat(
         return _RESOLVED_GROUP_IDS[name_key], "group"
 
     result = await zalo_personal_channel._goi(conn, "zalo_list_threads", {"limit": 200})
-    threads = result.get("threads") if isinstance(result, dict) else result
+    threads = result.get("threads") if isinstance(result, dict) else (result if isinstance(result, list) else [])
     found_tid = None
+    all_groups_debug = []
     for thread in threads or []:
-        if not isinstance(thread, dict) or (thread.get("threadType") or thread.get("type")) != "group":
+        if not isinstance(thread, dict):
             continue
-        thread_id = thread.get("threadId") or thread.get("id")
-        if not thread_id:
-            continue
-        thread_name = _normalize_group_name(str(thread.get("name") or ""))
-        if thread_name == name_key:
-            found_tid = str(thread_id)
-            break
-        if found_tid is None and name_key in thread_name:
-            found_tid = str(thread_id)
+        tt = str(thread.get("threadType") or thread.get("type") or "").strip().lower()
+        is_grp = bool(thread.get("isGroup")) or tt in ("1", "group", "true")
+        t_name = str(thread.get("name") or "").strip()
+        t_id = str(thread.get("threadId") or thread.get("id") or "").strip()
+        if is_grp and t_id:
+            all_groups_debug.append({"id": t_id, "name": t_name})
+            norm_name = _normalize_group_name(t_name)
+            if norm_name == name_key or name_key in norm_name or norm_name in name_key:
+                found_tid = t_id
+                break
     if found_tid is not None:
         _RESOLVED_GROUP_IDS[name_key] = found_tid
         return found_tid, "group"
-    return _DEFAULT_THREAD_ID, "private"
+    return _DEFAULT_THREAD_ID, f"not_found (available: {all_groups_debug[:15]})"
 
 
 async def send_zalo_notification(
